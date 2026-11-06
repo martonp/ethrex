@@ -191,6 +191,11 @@ pub struct FrameCallTraceFrame {
     pub contract_size: HashMap<Address, ContractSizeWithOpcode>,
     #[serde(rename = "outOfGas")]
     pub out_of_gas: bool,
+    /// Gas this scope consumed, including its nested calls: the `gas_used`
+    /// `exit` receives, the same value `LevmCallTracer`'s
+    /// `CallTraceFrame::gas_used` reports (and geth's `callTracer` `gasUsed`).
+    #[serde(rename = "gasUsed", with = "ethrex_common::serde_utils::u64::hex_str")]
+    pub gas_used: u64,
     /// Every `KECCAK256` preimage observed by the tracer up to the point this
     /// scope closed, hex-encoded and sorted.
     ///
@@ -357,9 +362,9 @@ impl Erc7562FrameTracer {
     /// `current_frame_index` `begin_frame` recorded) and appended to
     /// `self.frames`.
     ///
-    /// `gas_used`/`output` are accepted for calling-convention parity with
-    /// `LevmCallTracer::exit` (same reduced-schema note as `enter`) but are not
-    /// yet stored. `error`, when it names an out-of-gas condition, sets
+    /// `gas_used` is stored on the popped frame. `output` is accepted for
+    /// calling-convention parity with `LevmCallTracer::exit` (same
+    /// reduced-schema note as `enter`) but is not yet stored. `error`, when it names an out-of-gas condition, sets
     /// `out_of_gas` on the popped frame — mirroring geth's `OnExit`
     /// (`errors.Is(err, vm.ErrOutOfGas) || errors.Is(err, vm.ErrCodeStoreOutOfGas)`
     /// -> `call.OutOfGas = true`).
@@ -376,7 +381,7 @@ impl Erc7562FrameTracer {
     /// never fires for a real EVM out-of-gas halt.
     pub fn exit(
         &mut self,
-        _gas_used: u64,
+        gas_used: u64,
         _output: Vec<u8>,
         error: Option<String>,
     ) -> Result<(), InternalError> {
@@ -384,6 +389,7 @@ impl Erc7562FrameTracer {
             return Ok(());
         }
         let mut frame = self.call_stack.pop().ok_or(InternalError::CallFrame)?;
+        frame.gas_used = gas_used;
         if let Some(err) = &error {
             let err_lower = err.to_lowercase();
             if err_lower.contains("out of gas") || err_lower.contains("insufficient gas") {

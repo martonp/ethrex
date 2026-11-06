@@ -76,6 +76,30 @@ fn nested_enter_nests_into_parent_call() {
     );
 }
 
+/// Each scope keeps the `gas_used` its own `exit` received, serialized as
+/// `"gasUsed"` in hex (the call tracer's wire format).
+#[test]
+fn exit_records_gas_used_per_scope() {
+    let mut tracer = Erc7562FrameTracer::new();
+    tracer.begin_frame(0);
+    tracer.enter(CallType::CALL, Address::zero(), Address::from_low_u64_be(1), U256::zero(), &[], 1000);
+    tracer.enter(
+        CallType::STATICCALL,
+        Address::from_low_u64_be(1),
+        Address::from_low_u64_be(2),
+        U256::zero(),
+        &[],
+        400,
+    );
+    tracer.exit(200, Vec::new(), None).unwrap();
+    tracer.exit(500, Vec::new(), None).unwrap();
+    let root = &tracer.frames[0].root;
+    assert_eq!(root.gas_used, 500);
+    assert_eq!(root.calls[0].gas_used, 200);
+    let json = serde_json::to_value(&root.calls[0]).unwrap();
+    assert_eq!(json.get("gasUsed").and_then(|v| v.as_str()), Some("0xc8"));
+}
+
 /// Regression test for a reported bug: the first version of this check did
 /// `err.contains("out of gas")` (lowercase), but every real call site in
 /// `vm.rs` passes `format!("{e}")` on a `VMError`/`ExceptionalHalt` — and

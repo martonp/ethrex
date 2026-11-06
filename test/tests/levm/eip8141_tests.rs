@@ -2020,6 +2020,15 @@ fn erc7562_frame_tracer_nested_call_attribution() {
         "the nested call's `to` must be the inner contract"
     );
 
+    // The real CALL handler's `exit_context` must hand the callee's gas use to
+    // its nested scope, and the frame root's total includes it.
+    assert!(
+        inner_call.gas_used > 0 && inner_call.gas_used < caller_frame.gas_used,
+        "inner gasUsed {} must be non-zero and below the frame's {}",
+        inner_call.gas_used,
+        caller_frame.gas_used
+    );
+
     // Post-merge fix: the inner scope was opened by a real CALL opcode, so its
     // `call_type` must serialize as `"CALL"` under the `"type"` key (not
     // `"call_type"`/`"callType"`) -- the wire shape a downstream consumer's
